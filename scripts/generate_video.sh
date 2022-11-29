@@ -48,8 +48,7 @@ ffmpeg -loglevel error -stats -i $voice_file -i $music_final_file -filter_comple
 echo "Generating waveform video."
 ffmpeg -loglevel error -stats \
     -i $beta_file -filter_complex \
-    "[0:a]avectorscope=s=1080x1920:scale=cbrt:draw=line:zoom=4.5:rc=0:gc=200:bc=0:rf=0:gf=40:bf=0,format=yuv420p[v]; \
-    [v]pad=ih*16/9:ih:(ow-iw)/2:(oh-ih)/2[out]" \
+    "[0:a]avectorscope=s=1080x1920:scale=cbrt:draw=line:zoom=4.5:rc=0:gc=200:bc=0:rf=0:gf=40:bf=0,format=yuv420p [out]" \
     -map "[out]" -map 0:a \
     -b:v 700k -b:a 360k $gamma_file
 echo "Resizing waveform video."
