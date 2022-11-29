@@ -54,6 +54,7 @@ ffmpeg -loglevel error -stats -i $gamma_file -vf scale=1080:1920 -preset slow -c
 
 # Done.
 cp /tmp/${uuid}*.mp3 .
+cp /tmp/${uuid}*.mp4 .
 
 # Cleaning up
 rm /tmp/${uuid}*.mp3
