@@ -58,4 +58,5 @@ cp /tmp/${uuid}*.mp4 .
 
 # Cleaning up
 rm /tmp/${uuid}*.mp3
+rm /tmp/${uuid}*.mp4
 
