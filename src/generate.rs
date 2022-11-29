@@ -1,6 +1,7 @@
 use log::{debug, error};
 use reqwest::header::HeaderMap;
 use serde_json::json;
+use indicatif::ProgressBar;
 use std::env;
 
 pub struct GeneratedEntry {
@@ -29,7 +30,8 @@ fn count_words(s: &str) -> usize {
     total
 }
 
-pub async fn generate_entry(temperature: f32,
+pub async fn generate_entry(initial: String,
+                            temperature: f32,
                             repetition_penalty: f32,
                             top_p: f32,
                             top_k: i32) -> GeneratedEntry {
@@ -47,10 +49,15 @@ pub async fn generate_entry(temperature: f32,
     headers.insert("Authorization", format!("Bearer {api_key}").parse().unwrap());
 
     // let mut script = "This is the story of a man named Stanley. Stanley worked for a company in a big building where he was Employee #427. Employee #427's job was simple: he sat at his desk in Room 427 and he pushed buttons on a keyboard. Orders came to him through a monitor on his desk telling him what buttons to push, how long to push them, and in what order. This is what Employee #427 did every day of every month of every year, and although others may have considered it soul rending, Stanley relished every moment that the orders came in, as though he had been made exactly for this job. And Stanley was happy. And then one day, something very peculiar happened:".to_owned();
-    let mut script = "Bob didn't come home from work. He didn't come back to his family, nor did he even leave the building he worked in. If you looked in the places he frequened (the bar, mainly) you couldn't find him. You could only find him if you looked in the morgue.".to_owned();
+    // let mut script = "Bob didn't come home from work. He didn't come back to his family, nor did he even leave the building he worked in. If you looked in the places he frequened (the bar, mainly) you couldn't find him. You could only find him if you looked in the morgue.".to_owned();
+    let mut script = initial;
     let mut i = 0;
     let mut last_length = count_words(&script);
-    let script_max_words = count_words(&script) + 150;
+    let script_max_words = 125;
+    let pb = ProgressBar::new(script_max_words);
+
+    pb.set_length(25);
+
     loop {
         // https://huggingface.co/docs/api-inference/detailed_parameters#text-generation-task
         let request_body = json!({
@@ -66,7 +73,7 @@ pub async fn generate_entry(temperature: f32,
             }
         });
 
-        debug!("Querying API for response (iteration {i}, length {}).", count_words(&script));
+        // debug!("Querying API for response (iteration {i}, length {}).", count_words(&script));
         let resp = match client.post("https://api-inference.huggingface.co/models/bigscience/bloom")
             .body(request_body.to_string())
             .headers(headers.clone())
@@ -74,6 +81,7 @@ pub async fn generate_entry(temperature: f32,
             .await {
                 Ok(r) => r,
                 Err(e) => {
+                    pb.abandon();
                     error!("Failed to fetch response from API endpoint: {}", e);
                     std::process::exit(1);
                 }
@@ -88,19 +96,31 @@ pub async fn generate_entry(temperature: f32,
         let returned_json = json::parse(text).unwrap();
         let returned_text = returned_json[0]["generated_text"].to_string().replace("\n", " ");
         script = returned_text;
-        if count_words(&script) >= script_max_words {
+        if count_words(&script) >= script_max_words.try_into().unwrap() {
             break;
         } else if count_words(&script) == last_length {
+            pb.abandon();
             error!("LLM didn't generate new characters.");
             std::process::exit(1);
         }
 
         last_length = count_words(&script);
+        pb.set_position(last_length.try_into().unwrap());
 
         // Don't overwhelm the API.
         std::thread::sleep(std::time::Duration::from_secs(1));
 
         i += 1;
+    }
+
+    pb.finish_with_message("Generated.");
+
+    if script.chars().last().unwrap() != '.' {
+        let mut split = script.split(".");
+        let vec = split.collect::<Vec<&str>>();
+        let sub = &vec[0..vec.len()-1];
+        script = sub.to_vec().join(".");
+        script += ".";
     }
 
     debug!("Script: {}", script);

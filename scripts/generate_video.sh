@@ -16,6 +16,8 @@ gameplay_cut_file=/tmp/${uuid}_gameplay_cut.mp4
 final_video=/tmp/${uuid}_final_video.mp4
 final_final_video=/tmp/${uuid}_final_final_video.mp4
 
+script="$1"
+
 # Generate voiceover.
 voice_vox=""
 ls $base/assets/flitevox |sort -R |tail -1 |while read vox; do
@@ -28,7 +30,7 @@ voiceover_length=$(basename $voiceover_length | cut -d"." -f1)
 voiceover_length=$(($voiceover_length + 1))
 
 if [ "$voiceover_length" -gt "60" ]; then
-    echo "[Error] Voiceover exceeds 60 seconds, TikTok limit."
+    echo "[Error] Voiceover exceeds 60 seconds (at $voiceover_length)."
     exit 1
 fi
 
@@ -45,7 +47,7 @@ ffmpeg -loglevel error -stats -ss 0 -i $music_file -t $(($voiceover_length + 1))
 
 # Generate beta audio.
 echo "Reducing music volume levels."
-ffmpeg -loglevel error -stats -i $music_cut_file -filter:a "volume=0.15" $music_final_file
+ffmpeg -loglevel error -stats -i $music_cut_file -filter:a "volume=0.05" $music_final_file
 echo "Combining voiceover and music."
 ffmpeg -loglevel error -stats -i $voice_file -i $music_final_file -filter_complex amix=inputs=2:duration=longest $beta_file
 
@@ -53,7 +55,7 @@ ffmpeg -loglevel error -stats -i $voice_file -i $music_final_file -filter_comple
 echo "Generating waveform video."
 ffmpeg -loglevel error -stats \
     -i $beta_file -filter_complex \
-    "[0:a]avectorscope=s=1080x1920:scale=cbrt:draw=line:zoom=4.5:rc=0:gc=200:bc=0:rf=0:gf=40:bf=0,format=yuv420p [out]" \
+    "[0:a]avectorscope=s=1080x1920:scale=cbrt:draw=line:rc=0:gc=200:bc=0:rf=0:gf=40:bf=0,format=yuv420p [out]" \
     -map "[out]" -map 0:a \
     -b:v 700k -b:a 360k $gamma_file
 echo "Resizing waveform video."
@@ -69,10 +71,10 @@ ffmpeg -loglevel error -stats -ss 0 -i $gameplay_file -t $(($voiceover_length + 
 
 echo "Rendering final video."
 ffmpeg -loglevel error -stats \
-    -i $gameplay_cut_file -i $gamma_final_file -filter_complex " \
+    -i $gamma_final_file -i $gameplay_cut_file -filter_complex " \
         [0:v]setpts=PTS-STARTPTS, scale=1080x1920[top]; \
         [1:v]setpts=PTS-STARTPTS, scale=1080x1920, \
-             format=yuva420p,colorchannelmixer=aa=0.5[bottom]; \
+             format=yuva420p,colorchannelmixer=aa=0.25[bottom]; \
         [top][bottom]overlay=shortest=1" \
     $final_video
 
