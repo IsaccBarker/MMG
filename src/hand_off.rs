@@ -19,6 +19,6 @@ pub fn generate_video(script: &str, dir: &str) {
     reader
         .lines()
         .filter_map(|line| line.ok())
-        .for_each(|line| println!("hello {}", line));
+        .for_each(|line| println!("{}", line));
 }
 

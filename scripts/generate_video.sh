@@ -13,8 +13,11 @@ gamma_file=/tmp/${uuid}_gamma.mp4
 gamma_final_file=/tmp/${uuid}_gamma_final.mp4
 
 # Generate voiceover.
-# BEST VOICES: BDL, CLB, FEM, SLT
-voice_vox="$base/assets/flitevox/cmu_us_fem.flitevox"
+voice_vox=""
+ls $base/assets/flitevox |sort -R |tail -1 |while read vox; do
+    voice_vox=$vox
+    echo "[Info] Using voice (vox) $vox."
+done
 flite -voice $voice -t "$1" -o $voice_file
 voiceover_length=$(ffprobe -i $voice_file -show_entries format=duration -v quiet -of csv="p=0")
 voiceover_length=$(basename $voiceover_length | cut -d"." -f1)
@@ -27,7 +30,7 @@ fi
 echo "[Info] Voiceover set at $voiceover_length seconds."
 
 # Get random music file.
-ls $base/assets/background |sort -R |tail -$N |while read music_file_prime; do
+ls $base/assets/background |sort -R |tail -1 |while read music_file_prime; do
     cp $base/assets/background/$music_file_prime $music_file
 done
 
@@ -37,7 +40,7 @@ ffmpeg -loglevel error -stats -ss 0 -i $music_file -t $(($voiceover_length + 1))
 
 # Generate beta audio.
 echo "Reducing music volume levels."
-ffmpeg -loglevel error -stats -i $music_cut_file -filter:a "volume=0.1" $music_final_file
+ffmpeg -loglevel error -stats -i $music_cut_file -filter:a "volume=0.15" $music_final_file
 echo "Combining voiceover and music."
 ffmpeg -loglevel error -stats -i $voice_file -i $music_final_file -filter_complex amix=inputs=2:duration=longest $beta_file
 
