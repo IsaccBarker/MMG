@@ -12,7 +12,9 @@ beta_file=/tmp/${uuid}_beta.mp3
 gamma_file=/tmp/${uuid}_gamma.mp4
 gamma_final_file=/tmp/${uuid}_gamma_final.mp4
 gameplay_file=/tmp/${uuid}_gameplay.mp4
+gameplay_cut_file=/tmp/${uuid}_gameplay_cut.mp4
 final_video=/tmp/${uuid}_final_video.mp4
+final_final_video=/tmp/${uuid}_final_final_video.mp4
 
 # Generate voiceover.
 voice_vox=""
@@ -62,20 +64,25 @@ ls $base/assets/gameplay/*.mp4 |sort -R |tail -1 |while read gameplay_video_path
     cp $gameplay_video_path $gameplay_file
 done
 
+echo "Cutting down gameplay length."
+ffmpeg -loglevel error -stats -ss 0 -i $gameplay_file -t $(($voiceover_length + 1)) -c copy $gameplay_cut_file
+
 echo "Rendering final video."
 ffmpeg -loglevel error -stats \
-    -i $gameplay_file -i $gamma_final_file -filter_complex " \
-        [0:v]setpts=PTS-STARTPTS, scale=480x360[top]; \
-        [1:v]setpts=PTS-STARTPTS, scale=480x360, \
+    -i $gameplay_cut_file -i $gamma_final_file -filter_complex " \
+        [0:v]setpts=PTS-STARTPTS, scale=1080x1920[top]; \
+        [1:v]setpts=PTS-STARTPTS, scale=1080x1920, \
              format=yuva420p,colorchannelmixer=aa=0.5[bottom]; \
         [top][bottom]overlay=shortest=1" \
     $final_video
 
-echo "[Info] Final video rendered to $final_video."
+ffmpeg -loglevel error -stats \
+    -i $final_video -i $beta_file -c:v copy -map 0:v:0 -map 1:a:0 $final_final_video
+
+echo "[Info] Final video rendered to $final_final_video."
 
 # Done.
-cp /tmp/${uuid}*.mp3 .
-cp /tmp/${uuid}*.mp4 .
+cp $final_final_video .
 
 # Cleaning up
 rm /tmp/${uuid}*.mp3
