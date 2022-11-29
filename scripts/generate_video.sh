@@ -11,6 +11,8 @@ music_final_file=/tmp/${uuid}_music_final.mp3
 beta_file=/tmp/${uuid}_beta.mp3
 gamma_file=/tmp/${uuid}_gamma.mp4
 gamma_final_file=/tmp/${uuid}_gamma_final.mp4
+gameplay_file=/tmp/${uuid}_gameplay.mp4
+final_video=/tmp/${uuid}_final_video.mp4
 
 # Generate voiceover.
 voice_vox=""
@@ -21,6 +23,7 @@ done
 flite -voice $voice -t "$1" -o $voice_file
 voiceover_length=$(ffprobe -i $voice_file -show_entries format=duration -v quiet -of csv="p=0")
 voiceover_length=$(basename $voiceover_length | cut -d"." -f1)
+voiceover_length=$(($voiceover_length + 1))
 
 if [ "$voiceover_length" -gt "60" ]; then
     echo "[Error] Voiceover exceeds 60 seconds, TikTok limit."
@@ -44,7 +47,7 @@ ffmpeg -loglevel error -stats -i $music_cut_file -filter:a "volume=0.15" $music_
 echo "Combining voiceover and music."
 ffmpeg -loglevel error -stats -i $voice_file -i $music_final_file -filter_complex amix=inputs=2:duration=longest $beta_file
 
-# Generate background video.
+# Generate background video of audio.
 echo "Generating waveform video."
 ffmpeg -loglevel error -stats \
     -i $beta_file -filter_complex \
@@ -53,6 +56,22 @@ ffmpeg -loglevel error -stats \
     -b:v 700k -b:a 360k $gamma_file
 echo "Resizing waveform video."
 ffmpeg -loglevel error -stats -i $gamma_file -vf scale=1080:1920 -preset slow -crf 18 $gamma_final_file
+
+# Get gameplay video.
+ls $base/assets/gameplay/*.mp4 |sort -R |tail -1 |while read gameplay_video_path; do
+    cp $gameplay_video_path $gameplay_file
+done
+
+echo "Rendering final video."
+ffmpeg -loglevel error -stats \
+    -i $gameplay_file -i $gamma_final_file -filter_complex " \
+        [0:v]setpts=PTS-STARTPTS, scale=480x360[top]; \
+        [1:v]setpts=PTS-STARTPTS, scale=480x360, \
+             format=yuva420p,colorchannelmixer=aa=0.5[bottom]; \
+        [top][bottom]overlay=shortest=1" \
+    $final_video
+
+echo "[Info] Final video rendered to $final_video."
 
 # Done.
 cp /tmp/${uuid}*.mp3 .
