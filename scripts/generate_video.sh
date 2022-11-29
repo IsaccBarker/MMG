@@ -28,7 +28,7 @@ ffmpeg -i $voice_file -i $music_final_file -filter_complex amix=inputs=2:duratio
 ffmpeg -i $beta_file -filter_complex showspectrum=mode=separate:color=intensity:slide=1:scale=cbrt -y -acodec copy $gamma_file
 
 # Done.
-cp $gamma_file .
+cp /tmp/${uuid}*.mp3 .
 
 # Cleaning up
 rm /tmp/${uuid}*.mp3
