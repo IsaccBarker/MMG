@@ -6,6 +6,7 @@ base=$(cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P)/../
 uuid=$(date '+%s')
 voice_file=/tmp/${uuid}_voice.mp3
 music_file=/tmp/${uuid}_music.mp3
+music_final_file=/tmp/${uuid}_music_final.mp3
 beta_file=/tmp/${uuid}_beta.mp3
 gamma_file=/tmp/${uuid}_gamma.mp3
 
@@ -16,15 +17,18 @@ flite -voice $voice -t "$1" -o $voice_file
 
 # Get random music file.
 ls $base/assets/background |sort -R |tail -$N |while read music_file_prime; do
-    cp $music_file_prime $music_file
+    cp $base/assets/background/$music_file_prime $music_file
 done
 
 # Generate beta audio.
-ffmpeg -i $music_file -filter:a "volume=0.25" $music_file
-ffmpeg -i $voice_file -i $music_file -filter_complex amix=inputs=2:duration=longest $beta_file
+ffmpeg -i $music_file -filter:a "volume=0.25" $music_final_file
+ffmpeg -i $voice_file -i $music_final_file -filter_complex amix=inputs=2:duration=longest $beta_file
 
 # Generate background video.
 ffmpeg -i $beta_file -f lavfi -i mandelbrot=s=320x240 -y -acodec copy $gamma_file
+
+# Done.
+cp $gamma_file .
 
 # Cleaning up
 rm /tmp/${uuid}*.mp3
