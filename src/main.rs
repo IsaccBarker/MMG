@@ -2,7 +2,7 @@ pub mod models;
 pub mod schema;
 pub mod db;
 pub mod generate;
-pub mod audio;
+pub mod hand_off;
 
 use clap::{Arg, ArgAction, Command};
 use log::{debug, info};
@@ -14,10 +14,10 @@ fn cli() -> Command {
         .version("1.0")
         .author("Milo Banks (Isacc Barker) <milo banks at rowland hall dot org>")
         .arg(
-            Arg::new("script-dir")
+            Arg::new("base-dir")
                 .short('s')
-                .long("script-dir")
-                .help("Path to scripts directory.")
+                .long("base-dir")
+                .help("Path to base asset directory.")
                 .required(true)
         )
         .arg(
@@ -34,6 +34,7 @@ async fn main() {
     env_logger::init();
 
     let matches = cli().get_matches();
+    let base_dir = matches.get_one::<String>("base-dir").unwrap().to_owned();
 
     info!("Starting generation process!");
 
@@ -49,14 +50,10 @@ async fn main() {
     // let script = generate::generate_entry(1.1, 10.0, 0.7, 3).await;
     let script_str = "Bob didn't come home from work. He didn't come back to his family, nor did he even leave the building he worked in. If you looked in the places he frequened (the bar, mainly) you couldn't find him. You could only find him if you looked in the morgue. He had been killed by the same person who killed his wife and son. The killer had a gun and a knife. He was wearing a mask and gloves, but he had a tattoo on his left arm. The tattoo was of a skull and crossbones. The killer had been caught, but the police didn't know who he was. They had no idea what he looked like, and they didn't have any evidence to prove it. They only had the tattoo on his arm. They had to find the killer before he killed again. They had to find him before he killed another family. The killer had been caught, but the police couldn't find him. The killer had been caught, but the police didn't know who he was. The killer had been caught, but the police didn't know what he looked like. The killer had been caught, but the police didn't have any evidence to".to_owned();
 
-    info!("Generating script audio.");
-    let audio_path = audio::generate_audio(script_str, matches.get_one::<String>("script-dir").unwrap().to_owned());
+    info!("Handing video creation off.");
+    hand_off::generate_video(&script_str, &base_dir);
 
-    info!("Generating script background video.");
-    info!("Generating final video.");
     info!("Recording in database.");
 
     info!("Cleaning up.");
-    // Shouldn't fail unless something *very* weird happens.
-    std::fs::remove_file(audio_path).unwrap();
 }
