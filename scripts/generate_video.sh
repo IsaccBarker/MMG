@@ -25,7 +25,7 @@ ffmpeg -i $music_file -filter:a "volume=0.1" $music_final_file
 ffmpeg -i $voice_file -i $music_final_file -filter_complex amix=inputs=2:duration=longest $beta_file
 
 # Generate background video.
-ffmpeg -i $beta_file -f lavfi -i mandelbrot=s=320x240 -y -acodec copy $gamma_file
+ffmpeg -i $beta_file -filter_complex showspectrum=mode=separate:color=intensity:slide=1:scale=cbrt -y -acodec copy $gamma_file
 
 # Done.
 cp $gamma_file .
