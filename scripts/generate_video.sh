@@ -15,6 +15,7 @@ gameplay_file=/tmp/${uuid}_gameplay.mp4
 gameplay_cut_file=/tmp/${uuid}_gameplay_cut.mp4
 final_video=/tmp/${uuid}_final_video.mp4
 final_final_video=/tmp/${uuid}_final_final_video.mp4
+delta_video=/tmp/${uuid}_delta_video.mp4
 
 script="$1"
 
@@ -24,7 +25,7 @@ ls $base/assets/flitevox |sort -R |tail -1 |while read vox; do
     voice_vox=$vox
     echo "[Info] Using voice (vox) $vox."
 done
-flite -voice $voice -t "$1" -o $voice_file
+flite -voice $voice_vox -t "$1" -o $voice_file
 voiceover_length=$(ffprobe -i $voice_file -show_entries format=duration -v quiet -of csv="p=0")
 voiceover_length=$(basename $voiceover_length | cut -d"." -f1)
 voiceover_length=$(($voiceover_length + 1))
@@ -78,10 +79,14 @@ ffmpeg -loglevel error -stats \
         [top][bottom]overlay=shortest=1" \
     $final_video
 
+echo "Mapping final video audio."
 ffmpeg -loglevel error -stats \
     -i $final_video -i $beta_file -c:v copy -map 0:v:0 -map 1:a:0 $final_final_video
 
-echo "[Info] Final video rendered to $final_final_video."
+echo "Setting final video volume."
+ffmpeg -loglevel error -stats -i $final_final_video -filter:a "volume=5.0" $delta_video
+
+echo "[Info] Final video rendered to $delta_video."
 
 # Done.
 cp $final_final_video .
