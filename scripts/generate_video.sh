@@ -4,28 +4,57 @@ set -e
 
 base=$(cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P)/../
 uuid=$(date '+%s')
+vox_file=/tmp/${uuid}_vox.mp3
 voice_file=/tmp/${uuid}_voice.mp3
+base_voice_fragment_file=/tmp/${uuid}_voice
 music_file=/tmp/${uuid}_music.mp3
-music_cut_file=/tmp/${uuid}_music_cut.mp3
-music_final_file=/tmp/${uuid}_music_final.mp3
+music_tmp_file=/tmp/${uuid}_music_tmp.mp3
 beta_file=/tmp/${uuid}_beta.mp3
 gamma_file=/tmp/${uuid}_gamma.mp4
 gamma_final_file=/tmp/${uuid}_gamma_final.mp4
 gameplay_file=/tmp/${uuid}_gameplay.mp4
 gameplay_cut_file=/tmp/${uuid}_gameplay_cut.mp4
 final_video=/tmp/${uuid}_final_video.mp4
-final_final_video=/tmp/${uuid}_final_final_video.mp4
-delta_video=/tmp/${uuid}_delta_video.mp4
+final_tmp_video=/tmp/${uuid}_final_tmp_video.mp4
+ffmpeg_subtitle=/tmp/${uuid}_subtitle.ffmpeg
 
 script="$1"
 
 # Generate voiceover.
-voice_vox=""
 ls $base/assets/flitevox |sort -R |tail -1 |while read vox; do
-    voice_vox=$vox
-    echo "[Info] Using voice (vox) $vox."
+    echo $base/assets/flitevox/$vox > $vox_file
 done
-flite -voice $voice_vox -t "$1" -o $voice_file
+voice_vox=$(cat $vox_file)
+echo "[Info] Using voice (vox) $voice_vox."
+IFS='.' read -ra ADDR <<< "$1"
+i=0
+previous_fragment_end_time=0
+for line in "${ADDR[@]}"; do
+    line=$(echo $line | xargs)
+    output=${base_voice_fragment_file}_$i.mp3
+
+    echo "[Info] Generating line $line."
+    flite -voice $voice_vox -t "$line" -o $output
+    fragment_length=$(ffprobe -i $output -show_entries format=duration -v quiet -of csv="p=0")
+    fragment_start=$previous_fragment_end_time
+    fragment_end=$(echo "$previous_fragment_end_time + $fragment_length" | bc | awk '{printf "%f", $0}')
+    previous_fragment_end_time=$fragment_end
+
+    echo "drawtext=fontfile=$base/assets/fonts/roboto/Roboto-Regular.ttf:text='$line,':fontcolor=white:fontsize=32:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,$fragment_start,$fragment_end)'" >> $ffmpeg_subtitle
+    i=$((i+1))
+done
+
+# This is a fucking mess.
+echo "[Info] Combining voiceover fragments."
+ffmpeg_concat_inputs=$(find ${base_voice_fragment_file}* | awk '{ for (i=1;i<=NF;i++) { printf " -i "; printf $i } }')
+ffmpeg_num_inputs=$(find ${base_voice_fragment_file}* | wc -l)
+ffmpeg_filter_complex_prefix=$(echo $ffmpeg_num_inputs | awk '{ for(i=0;i<$1;i++) { printf "["; printf i; printf ":0]" } }')
+ffmpeg -y -loglevel error -stats \
+    $ffmpeg_concat_inputs \
+    -filter_complex ${ffmpeg_filter_complex_prefix}concat=n=$ffmpeg_num_inputs:v=0:a=1[out] \
+    -map '[out]' \
+    $voice_file
+
 voiceover_length=$(ffprobe -i $voice_file -show_entries format=duration -v quiet -of csv="p=0")
 voiceover_length=$(basename $voiceover_length | cut -d"." -f1)
 voiceover_length=$(($voiceover_length + 1))
@@ -43,35 +72,39 @@ ls $base/assets/background |sort -R |tail -1 |while read music_file_prime; do
 done
 
 # Cut down music file.
-echo "Cutting down music length."
-ffmpeg -loglevel error -stats -ss 0 -i $music_file -t $(($voiceover_length + 1)) -c copy $music_cut_file
+echo "[Info] Cutting down music length."
+ffmpeg -y -loglevel error -stats -ss 0 \
+    -i $music_file -t $(($voiceover_length + 1)) -c copy $music_tmp_file
 
 # Generate beta audio.
-echo "Reducing music volume levels."
-ffmpeg -loglevel error -stats -i $music_cut_file -filter:a "volume=0.05" $music_final_file
+echo "[Info] Reducing music volume levels."
+ffmpeg -y -loglevel error -stats \
+    -i $music_tmp_file -filter:a "volume=0.05" $music_file
 echo "Combining voiceover and music."
-ffmpeg -loglevel error -stats -i $voice_file -i $music_final_file -filter_complex amix=inputs=2:duration=longest $beta_file
+ffmpeg -y -loglevel error -stats \
+    -i $voice_file -i $music_file -filter_complex amix=inputs=2:duration=longest $beta_file
 
 # Generate background video of audio.
-echo "Generating waveform video."
-ffmpeg -loglevel error -stats \
+echo "[Info ]Generating waveform video."
+ffmpeg -y -loglevel error -stats \
     -i $beta_file -filter_complex \
     "[0:a]avectorscope=s=1080x1920:scale=cbrt:draw=line:rc=0:gc=200:bc=0:rf=0:gf=40:bf=0,format=yuv420p [out]" \
     -map "[out]" -map 0:a \
     -b:v 700k -b:a 360k $gamma_file
-echo "Resizing waveform video."
-ffmpeg -loglevel error -stats -i $gamma_file -vf scale=1080:1920 -preset slow -crf 18 $gamma_final_file
+echo "[Info] Resizing waveform video."
+ffmpeg -y -loglevel error -stats \
+    -i $gamma_file -vf scale=1080:1920 -preset slow -crf 18 $gamma_final_file
 
 # Get gameplay video.
 ls $base/assets/gameplay/*.mp4 |sort -R |tail -1 |while read gameplay_video_path; do
     cp $gameplay_video_path $gameplay_file
 done
 
-echo "Cutting down gameplay length."
-ffmpeg -loglevel error -stats -ss 0 -i $gameplay_file -t $(($voiceover_length + 1)) -c copy $gameplay_cut_file
+echo "[Info] Cutting down gameplay length."
+ffmpeg -y -loglevel error -stats -ss 0 -i $gameplay_file -t $(($voiceover_length + 1)) -c copy $gameplay_cut_file
 
-echo "Rendering final video."
-ffmpeg -loglevel error -stats \
+echo "[Info] Rendering final video."
+ffmpeg -y -loglevel error -stats \
     -i $gamma_final_file -i $gameplay_cut_file -filter_complex " \
         [0:v]setpts=PTS-STARTPTS, scale=1080x1920[top]; \
         [1:v]setpts=PTS-STARTPTS, scale=1080x1920, \
@@ -79,19 +112,37 @@ ffmpeg -loglevel error -stats \
         [top][bottom]overlay=shortest=1" \
     $final_video
 
-echo "Mapping final video audio."
-ffmpeg -loglevel error -stats \
-    -i $final_video -i $beta_file -c:v copy -map 0:v:0 -map 1:a:0 $final_final_video
+echo "[Info] Mapping final video audio."
+ffmpeg -y -loglevel error -stats \
+    -i $final_video -i $beta_file -c:v copy -map 0:v:0 -map 1:a:0 $final_tmp_video
 
-echo "Setting final video volume."
-ffmpeg -loglevel error -stats -i $final_final_video -filter:a "volume=5.0" $delta_video
+echo "[Info] Setting final video volume."
+ffmpeg -y -loglevel error -stats \
+    -i $final_tmp_video -filter:a "volume=5.0" $final_video
 
-echo "[Info] Final video rendered to $delta_video."
+echo "[Info] Drawing disclaimer on final video."
+ffmpeg -y -loglevel error -stats \
+    -i $final_video -vf \
+    "drawtext=fontfile=$base/assets/fonts/roboto/Roboto-Regular.ttf:text='This is computer generated.':fontcolor=white:fontsize=32:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=h-text_h-200" \
+    -codec:a copy $final_tmp_video
+
+echo "[Info] Drawing subtitles."
+num_subtitles=$(cat $ffmpeg_subtitle | wc -l)
+for i in $(seq $num_subtitles)
+do
+    ffmpeg_command=$(cat $ffmpeg_subtitle | head -$i | tail -1)
+    ffmpeg -y -loglevel error -stats \
+        -i $final_tmp_video -vf \
+        "$ffmpeg_command" \
+        -codec:a copy $final_video
+
+    cp $final_video $final_tmp_video
+done
+
+echo "[Info] Final video rendered to ./$(basename $final_tmp_video)."
 
 # Done.
-cp $final_final_video .
+cp $final_tmp_video final.mp4
 
 # Cleaning up
-rm /tmp/${uuid}*.mp3
-rm /tmp/${uuid}*.mp4
-
+rm /tmp/${uuid}*
