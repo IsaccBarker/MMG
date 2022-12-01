@@ -55,7 +55,7 @@ async fn main() {
     }
 
     info!("Generating script.");
-    let script = generate::generate_entry(initial, 1.1, 10.0, 0.7, 3).await;
+    let script = generate::generate_entry(initial, 1.4, 25.0).await;
 
     info!("Handing video creation off.");
     hand_off::generate_video(&script.script, &base_dir);

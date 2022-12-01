@@ -32,9 +32,7 @@ fn count_words(s: &str) -> usize {
 
 pub async fn generate_entry(initial: String,
                             temperature: f32,
-                            repetition_penalty: f32,
-                            top_p: f32,
-                            top_k: i32) -> GeneratedEntry {
+                            repetition_penalty: f32) -> GeneratedEntry {
     // TODO: Once I get this running on higher-end hardware, let's try and run the model locally.
     let client = reqwest::Client::new();
     let mut headers = HeaderMap::new();
@@ -61,9 +59,7 @@ pub async fn generate_entry(initial: String,
             "inputs": &script,
             "parameters": {
                 "temperature": temperature,
-                "repetition_penalty": repetition_penalty,
-                "top_p": top_p,
-                "top_k": top_k
+                "repetition_penalty": repetition_penalty
             },
             "options": {
                 "wait_for_model": true

@@ -11,6 +11,7 @@ base_voice_fragment_file=/tmp/${uuid}_voice
 music_file=/tmp/${uuid}_music.mp3
 music_tmp_file=/tmp/${uuid}_music_tmp.mp3
 beta_file=/tmp/${uuid}_beta.mp3
+beta_for_vid_gen_file=/tmp/${uuid}_beta_fvg.mp3
 gamma_file=/tmp/${uuid}_gamma.mp4
 gamma_final_file=/tmp/${uuid}_gamma_final.mp4
 gameplay_file=/tmp/${uuid}_gameplay.mp4
@@ -20,6 +21,9 @@ final_tmp_video=/tmp/${uuid}_final_tmp_video.mp4
 ffmpeg_subtitle=/tmp/${uuid}_subtitle.ffmpeg
 
 script="$1"
+script="${script//\'/‘}"
+script="${script//\"/“}"
+script="${script//:/,}"
 
 # Generate voiceover.
 ls $base/assets/flitevox |sort -R |tail -1 |while read vox; do
@@ -27,50 +31,56 @@ ls $base/assets/flitevox |sort -R |tail -1 |while read vox; do
 done
 voice_vox=$(cat $vox_file)
 echo "[Info] Using voice (vox) $voice_vox."
-IFS='.' read -ra ADDR <<< "$1"
+IFS='.' read -ra ADDR <<< "$script"
 i=0
 previous_fragment_end_time=0
+echo -n "[in]" >> $ffmpeg_subtitle
 for line in "${ADDR[@]}"; do
     line=$(echo $line | xargs -0)
     output=${base_voice_fragment_file}_$i.mp3
 
-    echo "[Info] Generating line $line."
+    echo "[Info] Generating line $line --> $output ($i)."
     flite -voice $voice_vox -t "$line" -o $output
     fragment_length=$(ffprobe -i $output -show_entries format=duration -v quiet -of csv="p=0")
     fragment_start=$previous_fragment_end_time
     fragment_end=$(echo "$previous_fragment_end_time + $fragment_length" | bc | awk '{printf "%f", $0}')
     previous_fragment_end_time=$fragment_end
 
-    num_characters=$(echo -n "$line" | wc -c)
-    if (( num_characters < 50 )); then
-        echo "[in]drawtext=fontfile=$base/assets/fonts/roboto/Roboto-Regular.ttf:text='$line.':fontcolor=white:fontsize=52:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,$fragment_start,$fragment_end)'[out]" >> $ffmpeg_subtitle
-    else
-        echo -n "[in]" >> $ffmpeg_subtitle
+    IFS=' ,'- read -ra words <<< "$line"
+    num_chars=$(echo $line | wc -c)
+    num_words=${#words[@]}
 
-        IFS=' ' read -ra words <<< "$line"
-        num_words=${#words[@]}
+    if (( num_words < 10 )) || (( num_chars < 35 )); then
+        echo -n "drawtext=fontfile=$base/assets/fonts/roboto/Roboto-Regular.ttf:text='$line.':fontcolor=white:fontsize=52:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,$fragment_start,$fragment_end)'," >> $ffmpeg_subtitle
+    else
         num_sub_lines=$(((num_words+4)/5))
         current_sub_line=0
-        for i in $(seq $num_sub_lines); do
+        for k in $(seq $num_sub_lines); do
             text=${words[@]:$((current_sub_line*5)):5}
-            echo -e "\tFrom $((current_sub_line*5)):5"
-            echo -e "\t$text"
 
-            if (( i != num_sub_lines )); then
-                echo -n "drawtext=fontfile=$base/assets/fonts/roboto/Roboto-Regular.ttf:text='$text':fontcolor=white:fontsize=52:x=(w-text_w)/2:y=(h-text_h)/2+$((current_sub_line*75)):enable='between(t,$fragment_start,$fragment_end)'" >> $ffmpeg_subtitle
-                echo -n "," >> $ffmpeg_subtitle
-            else
+            if (( k == num_sub_lines )); then
                 echo -n "drawtext=fontfile=$base/assets/fonts/roboto/Roboto-Regular.ttf:text='$text.':fontcolor=white:fontsize=52:x=(w-text_w)/2:y=(h-text_h)/2+$((current_sub_line*75)):enable='between(t,$fragment_start,$fragment_end)'" >> $ffmpeg_subtitle
+            else
+                echo -n "drawtext=fontfile=$base/assets/fonts/roboto/Roboto-Regular.ttf:text='$text':fontcolor=white:fontsize=52:x=(w-text_w)/2:y=(h-text_h)/2+$((current_sub_line*75)):enable='between(t,$fragment_start,$fragment_end)'" >> $ffmpeg_subtitle
             fi
+            echo -n "," >> $ffmpeg_subtitle
 
             current_sub_line=$((current_sub_line+1))
         done
-
-        echo [out] >> $ffmpeg_subtitle
     fi
 
     i=$((i+1))
 done
+
+# NOTE: The problem is the fragmented voice logic!
+
+data=$(cat $ffmpeg_subtitle)
+if [[ "${data: -1}" == "," ]]; then
+    data=${data::-1}
+    echo -n "$data" > $ffmpeg_subtitle
+fi
+
+echo -n "[out]" >> $ffmpeg_subtitle
 
 # This is a fucking mess.
 echo "[Info] Combining voiceover fragments."
@@ -83,7 +93,7 @@ ffmpeg -y -loglevel error -stats \
     -map '[out]' \
     $voice_file
 echo "[Info] Regenerating full voiceover."
-flite -voice $voice_vox -t "$1" -o $voice_for_vid_gen_file
+flite -voice $voice_vox -t "$script" -o $voice_for_vid_gen_file
 
 voiceover_length=$(ffprobe -i $voice_file -show_entries format=duration -v quiet -of csv="p=0")
 voiceover_length=$(basename $voiceover_length | cut -d"." -f1)
@@ -109,16 +119,18 @@ ffmpeg -y -loglevel error -stats -ss 0 \
 # Generate beta audio.
 echo "[Info] Reducing music volume levels."
 ffmpeg -y -loglevel error -stats \
-    -i $music_tmp_file -filter:a "volume=0.05" $music_file
+    -i $music_tmp_file -filter:a "volume=0.25" $music_file
 echo "[Info] Combining voiceover and music."
 ffmpeg -y -loglevel error -stats \
     -i $voice_file -i $music_file -filter_complex amix=inputs=2:duration=longest $beta_file
+ffmpeg -y -loglevel error -stats \
+    -i $voice_for_vid_gen_file -i $music_file -filter_complex amix=inputs=2:duration=longest $beta_for_vid_gen_file
 
 # Generate background video of audio.
 echo "[Info] Generating waveform video."
 ffmpeg -y -loglevel error -stats \
-    -i $beta_file -filter_complex \
-    "[0:a]avectorscope=s=1080x1920:scale=cbrt:draw=line:rc=0:gc=200:bc=0:rf=0:gf=40:bf=0,format=yuv420p [out]" \
+    -i $beta_for_vid_gen_file -filter_complex \
+    "[0:a]avectorscope=s=1080x1920:scale=cbrt:draw=dot:rc=0:gc=200:bc=0:rf=0:gf=40:bf=0,format=yuv420p [out]" \
     -map "[out]" -map 0:a \
     -b:v 700k -b:a 360k $gamma_file
 echo "[Info] Resizing waveform video."
@@ -158,23 +170,16 @@ ffmpeg -y -loglevel error -stats \
 #     -codec:a copy $final_tmp_video
 
 echo "[Info] Drawing subtitles."
-num_subtitles=$(cat $ffmpeg_subtitle | wc -l)
-for i in $(seq $num_subtitles)
-do
-    ffmpeg_command=$(cat $ffmpeg_subtitle | head -$i | tail -1)
-    echo "FOO: $ffmpeg_command"
-    ffmpeg -y -loglevel error -stats \
-        -i $final_tmp_video -vf \
-        "$ffmpeg_command" \
-        -codec:a copy $final_video
+ffmpeg_command=$(cat $ffmpeg_subtitle)
+ffmpeg -y -loglevel error -stats \
+    -i $final_tmp_video -vf \
+    "$ffmpeg_command" \
+    -codec:a copy $final_video
 
-    cp $final_video $final_tmp_video
-done
-
-echo "[Info] Final video rendered to ./$(basename $final_tmp_video)."
+echo "[Info] Final video rendered to ./$(basename $final_video)."
 
 # Done.
-cp $final_tmp_video final.mp4
+cp $final_video final.mp4
 
 # Cleaning up
 rm /tmp/${uuid}*
